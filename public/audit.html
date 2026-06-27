@@ -87,7 +87,7 @@ function render() {
       <h2>Q${q.num}. ${escapeHtml(q.title)}</h2>
       ${q.guideline ? `<div class="guideline">${escapeHtml(q.guideline)}</div>` : ''}
       <div class="row">
-        <input type="file" accept="image/*" multiple capture="environment" data-q="${q.num}" data-action="upload" ${entry.skipped ? 'disabled' : ''} />
+        <input type="file" accept="image/*" multiple data-q="${q.num}" data-action="upload" ${entry.skipped ? 'disabled' : ''} />
         <label><input type="checkbox" data-q="${q.num}" data-action="skip" ${entry.skipped ? 'checked' : ''}/> N/A</label>
       </div>
       <div class="status">${entry.photos.length} photo(s)</div>
