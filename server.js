@@ -5,6 +5,7 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const PDFDocument = require('pdfkit');
 const sharp = require('sharp');
+const heicConvert = require('heic-convert');
 
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, 'data');
@@ -154,10 +155,24 @@ app.use('/pdfs', express.static(PDFS_DIR));
 // never carries more pixels than will ever be visible on the printed page.
 const TARGET_DPI = 200;
 
+// iPhones save gallery photos as HEIC. sharp's bundled libvips doesn't
+// decode HEIC (licensing), so convert those to JPEG first with a pure-JS
+// decoder before handing the bytes to sharp.
+function isHeic(buffer) {
+  if (buffer.length < 12) return false;
+  if (buffer.toString('ascii', 4, 8) !== 'ftyp') return false;
+  const brand = buffer.toString('ascii', 8, 12);
+  return ['heic', 'heix', 'hevc', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1'].includes(brand);
+}
+
 async function preparePhotoForPdf(photoPath, maxWidth, maxHeight) {
   const maxPxWidth = Math.round((maxWidth / 72) * TARGET_DPI);
   const maxPxHeight = Math.round((maxHeight / 72) * TARGET_DPI);
-  const buffer = await sharp(photoPath)
+  let input = fs.readFileSync(photoPath);
+  if (isHeic(input)) {
+    input = await heicConvert({ buffer: input, format: 'JPEG', quality: 0.95 });
+  }
+  const buffer = await sharp(input)
     .rotate() // apply EXIF orientation before stripping metadata
     .resize({
       width: maxPxWidth,
