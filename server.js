@@ -72,8 +72,8 @@ function turnStatus(id) {
 function publicQueueState() {
   pruneAndPromote();
   return {
-    active: active ? { roName: active.roName, roCode: active.roCode, startedAt: active.startedAt } : null,
-    queue: queue.map((q, i) => ({ position: i + 1, roName: q.roName, roCode: q.roCode })),
+    active: active ? { auditor: active.auditor, roCode: active.roCode, startedAt: active.startedAt } : null,
+    queue: queue.map((q, i) => ({ position: i + 1, auditor: q.auditor, roCode: q.roCode })),
   };
 }
 
@@ -152,10 +152,10 @@ app.post('/api/session', (req, res) => {
   pruneAndPromote();
   const now = Date.now();
   if (!active) {
-    active = { id, roName, roCode, startedAt: now, lastHeartbeat: now };
+    active = { id, roName, roCode, auditor, startedAt: now, lastHeartbeat: now };
     res.json({ sessionId: id, status: 'active' });
   } else {
-    queue.push({ id, roName, roCode, queuedAt: now, lastHeartbeat: now });
+    queue.push({ id, roName, roCode, auditor, queuedAt: now, lastHeartbeat: now });
     res.json({ sessionId: id, status: 'queued', position: queue.length });
   }
 });

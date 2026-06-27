@@ -59,14 +59,14 @@ async function refreshQueue() {
     }
     let html = '';
     if (data.active) {
-      html += `<div class="queue-row"><span>Active now:</span><span class="badge">${escapeHtml(data.active.roName) || 'RO'} (${escapeHtml(data.active.roCode) || '-'})</span></div>`;
+      html += `<div class="queue-row"><span>Active now:</span><span class="badge">${escapeHtml(data.active.auditor) || 'Auditor'} (${escapeHtml(data.active.roCode) || '-'})</span></div>`;
     } else {
       html += '<div class="queue-empty">No one is currently active.</div>';
     }
     if (data.queue.length > 0) {
       html += '<div class="queue-list">';
       for (const q of data.queue) {
-        html += `<div class="queue-row"><span>#${q.position} waiting:</span><span>${escapeHtml(q.roName) || 'RO'} (${escapeHtml(q.roCode) || '-'})</span></div>`;
+        html += `<div class="queue-row"><span>#${q.position} waiting:</span><span>${escapeHtml(q.auditor) || 'Auditor'} (${escapeHtml(q.roCode) || '-'})</span></div>`;
       }
       html += '</div>';
     }
