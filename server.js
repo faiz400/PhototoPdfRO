@@ -141,6 +141,15 @@ function downloadFilename(session) {
   return `AuditPhotos-${safe(session.roName)}-${safe(session.auditDate)}.pdf`;
 }
 
+// Tracks in-progress PDF generation so the client can poll for a percentage.
+const PDF_PROGRESS = new Map();
+
+app.get('/api/session/:id/pdf-progress', (req, res) => {
+  const progress = PDF_PROGRESS.get(req.params.id);
+  if (!progress) return res.json({ processed: 0, total: 0 });
+  res.json(progress);
+});
+
 app.post('/api/session/:id/submit', async (req, res) => {
   const session = loadSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -156,6 +165,8 @@ app.post('/api/session/:id/submit', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate PDF', detail: String(err) });
+  } finally {
+    PDF_PROGRESS.delete(session.id);
   }
 });
 
@@ -220,6 +231,13 @@ function generatePdf(session, outputPath) {
       doc.text(`Auditor: ${session.auditor || '-'}`);
       doc.text(`Audit Date: ${session.auditDate || '-'}`);
 
+      const total = QUESTIONS.reduce((sum, q) => {
+        const entry = session.answers[q.num];
+        return sum + (entry && !entry.skipped ? entry.photos.length : 0);
+      }, 0);
+      let processed = 0;
+      PDF_PROGRESS.set(session.id, { processed, total });
+
       for (const q of QUESTIONS) {
         const entry = session.answers[q.num] || { skipped: false, photos: [] };
         // Skip the section entirely when there's nothing to show -
@@ -259,6 +277,9 @@ function generatePdf(session, outputPath) {
           doc.y = doc.page.height - doc.page.margins.bottom - 20;
           doc.fontSize(9).fillColor('#666').text(`${q.num} - Photo ${i} of ${entry.photos.length}`, { align: 'center' });
           doc.fillColor('#000');
+
+          processed += 1;
+          PDF_PROGRESS.set(session.id, { processed, total });
         }
       }
 

@@ -63,8 +63,8 @@
 
 <div id="submitOverlay">
   <div class="box">
-    <div class="progress-bar"><div class="progress-bar-fill indeterminate"></div></div>
-    <p>Generating PDF report&hellip; this can take a little while for lots of photos. Please don&apos;t close this tab.</p>
+    <div class="progress-bar"><div class="progress-bar-fill indeterminate" id="submitProgressFill"></div></div>
+    <p id="submitProgressLabel">Generating PDF report&hellip; this can take a little while for lots of photos. Please don&apos;t close this tab.</p>
   </div>
 </div>
 
@@ -110,8 +110,7 @@ function render() {
     `).join('');
 
     card.innerHTML = `
-      <h2>Q${q.num}. ${escapeHtml(q.title)}</h2>
-      ${q.guideline ? `<div class="guideline">${escapeHtml(q.guideline)}</div>` : ''}
+      <h2>${q.num}. ${escapeHtml(q.title)}</h2>
       <div class="row">
         <input type="file" accept="image/*" multiple data-q="${q.num}" data-action="upload" ${entry.skipped ? 'disabled' : ''} />
         <label><input type="checkbox" data-q="${q.num}" data-action="skip" ${entry.skipped ? 'checked' : ''}/> N/A</label>
@@ -212,9 +211,28 @@ async function onDelete(e) {
 document.getElementById('submitBtn').addEventListener('click', async () => {
   const btn = document.getElementById('submitBtn');
   const overlay = document.getElementById('submitOverlay');
+  const fill = document.getElementById('submitProgressFill');
+  const label = document.getElementById('submitProgressLabel');
   btn.disabled = true;
   btn.textContent = 'Generating PDF...';
+  fill.classList.add('indeterminate');
+  fill.style.width = '';
+  label.textContent = 'Generating PDF report… please don\'t close this tab.';
   overlay.style.display = 'flex';
+
+  const pollInterval = setInterval(async () => {
+    try {
+      const presp = await fetch(`/api/session/${sessionId}/pdf-progress`);
+      const p = await presp.json();
+      if (p.total > 0) {
+        const pct = Math.round((p.processed / p.total) * 100);
+        fill.classList.remove('indeterminate');
+        fill.style.width = `${pct}%`;
+        label.textContent = `Processing photo ${p.processed} of ${p.total}… ${pct}%`;
+      }
+    } catch (e) { /* ignore poll errors, keep showing indeterminate state */ }
+  }, 400);
+
   try {
     const resp = await fetch(`/api/session/${sessionId}/submit`, { method: 'POST' });
     const data = await resp.json();
@@ -229,6 +247,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
     btn.disabled = false;
     btn.textContent = 'Submit & Generate PDF';
   } finally {
+    clearInterval(pollInterval);
     overlay.style.display = 'none';
   }
 });
