@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RO Audit - Photo Upload</title>
+<style>
+  body { font-family: system-ui, Arial, sans-serif; max-width: 640px; margin: 0 auto 80px; padding: 0 16px; }
+  header { position: sticky; top: 0; background: #fff; padding: 12px 0; border-bottom: 1px solid #ddd; z-index: 10; }
+  header h1 { font-size: 16px; margin: 0; }
+  header p { margin: 2px 0 0; font-size: 12px; color: #666; }
+  .question { border: 1px solid #ddd; border-radius: 8px; padding: 14px; margin-top: 16px; }
+  .question h2 { font-size: 15px; margin: 0 0 4px; }
+  .question .guideline { font-size: 12px; color: #666; margin-bottom: 10px; }
+  .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .thumb { position: relative; width: 80px; height: 80px; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 4px; border: 1px solid #ccc; }
+  .thumb button { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; background: #d33; color: #fff; border: none; font-size: 12px; line-height: 1; cursor: pointer; padding: 0; }
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .row label { font-size: 13px; display: flex; align-items: center; gap: 4px; font-weight: normal; }
+  input[type="file"] { font-size: 13px; }
+  .skip-card { opacity: 0.6; }
+  footer { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; border-top: 1px solid #ddd; padding: 12px 16px; display: flex; justify-content: center; }
+  footer button { width: 100%; max-width: 600px; padding: 14px; font-size: 16px; background: #1a73e8; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+  footer button:disabled { background: #aaa; }
+  .status { font-size: 12px; color: #666; margin-top: 4px; }
+  #result { text-align: center; margin-top: 30px; }
+  #result a { display: inline-block; margin-top: 10px; padding: 12px 20px; background: #188038; color: #fff; border-radius: 6px; text-decoration: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="roTitle">Loading...</h1>
+  <p id="roSub"></p>
+</header>
+
+<div id="questions"></div>
+
+<div id="result" style="display:none;"></div>
+
+<footer>
+  <button id="submitBtn">Submit &amp; Generate PDF</button>
+</footer>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const sessionId = params.get('session');
+if (!sessionId) {
+  document.body.innerHTML = '<p>Missing session. Go back and start a new audit.</p>';
+  throw new Error('no session');
+}
+
+let questions = [];
+let session = null;
+
+async function load() {
+  const [qResp, sResp] = await Promise.all([
+    fetch('/api/questions'),
+    fetch(`/api/session/${sessionId}`),
+  ]);
+  questions = await qResp.json();
+  session = await sResp.json();
+
+  document.getElementById('roTitle').textContent = `RO: ${session.roName || '-'} (${session.roCode || '-'})`;
+  document.getElementById('roSub').textContent = `Auditor: ${session.auditor || '-'} | Date: ${session.auditDate || '-'}`;
+
+  render();
+}
+
+function render() {
+  const container = document.getElementById('questions');
+  container.innerHTML = '';
+  for (const q of questions) {
+    const entry = session.answers[q.num] || { skipped: false, photos: [] };
+    const card = document.createElement('div');
+    card.className = 'question' + (entry.skipped ? ' skip-card' : '');
+    card.id = `q-${q.num}`;
+
+    const thumbsHtml = entry.photos.map((p) => `
+      <div class="thumb">
+        <img src="/uploads/${sessionId}/q${q.num}/${p}" />
+        <button data-action="delete" data-q="${q.num}" data-file="${p}">x</button>
+      </div>
+    `).join('');
+
+    card.innerHTML = `
+      <h2>Q${q.num}. ${escapeHtml(q.title)}</h2>
+      ${q.guideline ? `<div class="guideline">${escapeHtml(q.guideline)}</div>` : ''}
+      <div class="row">
+        <input type="file" accept="image/*" multiple capture="environment" data-q="${q.num}" data-action="upload" ${entry.skipped ? 'disabled' : ''} />
+        <label><input type="checkbox" data-q="${q.num}" data-action="skip" ${entry.skipped ? 'checked' : ''}/> N/A</label>
+      </div>
+      <div class="status">${entry.photos.length} photo(s)</div>
+      <div class="thumbs">${thumbsHtml}</div>
+    `;
+    container.appendChild(card);
+  }
+
+  container.querySelectorAll('[data-action="upload"]').forEach((el) => {
+    el.addEventListener('change', onUpload);
+  });
+  container.querySelectorAll('[data-action="skip"]').forEach((el) => {
+    el.addEventListener('change', onSkip);
+  });
+  container.querySelectorAll('[data-action="delete"]').forEach((el) => {
+    el.addEventListener('click', onDelete);
+  });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+async function onUpload(e) {
+  const qnum = e.target.getAttribute('data-q');
+  const files = e.target.files;
+  if (!files || files.length === 0) return;
+  const formData = new FormData();
+  for (const f of files) formData.append('photos', f);
+  e.target.disabled = true;
+  const resp = await fetch(`/api/session/${sessionId}/upload/${qnum}`, { method: 'POST', body: formData });
+  const data = await resp.json();
+  session.answers[qnum].photos = data.photos;
+  session.answers[qnum].skipped = false;
+  render();
+}
+
+async function onSkip(e) {
+  const qnum = e.target.getAttribute('data-q');
+  const skipped = e.target.checked;
+  await fetch(`/api/session/${sessionId}/skip/${qnum}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skipped }),
+  });
+  session.answers[qnum].skipped = skipped;
+  render();
+}
+
+async function onDelete(e) {
+  const qnum = e.target.getAttribute('data-q');
+  const file = e.target.getAttribute('data-file');
+  await fetch(`/api/session/${sessionId}/photo/${qnum}/${file}`, { method: 'DELETE' });
+  session.answers[qnum].photos = session.answers[qnum].photos.filter((p) => p !== file);
+  render();
+}
+
+document.getElementById('submitBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Generating PDF...';
+  try {
+    const resp = await fetch(`/api/session/${sessionId}/submit`, { method: 'POST' });
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'Unknown error');
+    document.getElementById('questions').style.display = 'none';
+    const result = document.getElementById('result');
+    result.style.display = 'block';
+    result.innerHTML = `<p>Audit photo report generated.</p><a href="${data.pdfUrl}" target="_blank">Download PDF</a>`;
+    document.querySelector('footer').style.display = 'none';
+  } catch (e) {
+    alert('Failed to generate PDF: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Submit & Generate PDF';
+  }
+});
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+node_modules/
+uploads/*
+!uploads/.gitkeep
+pdfs/*
+!pdfs/.gitkeep
+data/sessions/*
+!data/sessions/.gitkeep
+*.log

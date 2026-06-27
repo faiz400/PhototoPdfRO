@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RO Audit Photo Collection</title>
+<style>
+  body { font-family: system-ui, Arial, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
+  h1 { font-size: 20px; }
+  label { display: block; margin-top: 14px; font-weight: 600; font-size: 14px; }
+  input { width: 100%; padding: 8px; margin-top: 4px; font-size: 16px; box-sizing: border-box; }
+  button { margin-top: 24px; width: 100%; padding: 12px; font-size: 16px; background: #1a73e8; color: white; border: none; border-radius: 6px; cursor: pointer; }
+  button:disabled { background: #aaa; }
+</style>
+</head>
+<body>
+  <h1>Start RO Audit Photo Session</h1>
+  <p>Fill in audit details, then proceed to upload photos against each checklist item.</p>
+  <label>Retail Outlet Name<input id="roName" /></label>
+  <label>RO Code<input id="roCode" /></label>
+  <label>Auditor Name<input id="auditor" /></label>
+  <label>Audit Date<input id="auditDate" type="date" /></label>
+  <button id="startBtn">Start Audit</button>
+
+<script>
+document.getElementById('startBtn').addEventListener('click', async () => {
+  const roName = document.getElementById('roName').value.trim();
+  const roCode = document.getElementById('roCode').value.trim();
+  const auditor = document.getElementById('auditor').value.trim();
+  const auditDate = document.getElementById('auditDate').value;
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+  btn.textContent = 'Starting...';
+  try {
+    const resp = await fetch('/api/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roName, roCode, auditor, auditDate }),
+    });
+    const data = await resp.json();
+    window.location.href = `/audit.html?session=${data.sessionId}`;
+  } catch (e) {
+    alert('Failed to start session: ' + e);
+    btn.disabled = false;
+    btn.textContent = 'Start Audit';
+  }
+});
+</script>
+</body>
+</html>
