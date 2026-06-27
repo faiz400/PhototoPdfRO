@@ -131,6 +131,11 @@ app.post('/api/session/:id/skip/:qnum', (req, res) => {
 
 app.use('/uploads', express.static(UPLOADS_DIR));
 
+function downloadFilename(session) {
+  const safe = (s) => String(s || '-').trim().replace(/[\\/:*?"<>|]+/g, '-');
+  return `AuditPhotos-${safe(session.roName)}-${safe(session.auditDate)}.pdf`;
+}
+
 app.post('/api/session/:id/submit', async (req, res) => {
   const session = loadSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
@@ -142,11 +147,18 @@ app.post('/api/session/:id/submit', async (req, res) => {
     session.submitted = true;
     session.pdfFilename = pdfFilename;
     saveSession(session);
-    res.json({ ok: true, pdfUrl: `/pdfs/${pdfFilename}` });
+    res.json({ ok: true, pdfUrl: `/api/session/${session.id}/download` });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate PDF', detail: String(err) });
   }
+});
+
+app.get('/api/session/:id/download', (req, res) => {
+  const session = loadSession(req.params.id);
+  if (!session || !session.pdfFilename) return res.status(404).json({ error: 'PDF not found' });
+  const pdfPath = path.join(PDFS_DIR, session.pdfFilename);
+  res.download(pdfPath, downloadFilename(session));
 });
 
 app.use('/pdfs', express.static(PDFS_DIR));
