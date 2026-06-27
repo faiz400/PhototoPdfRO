@@ -26,6 +26,25 @@
   .status { font-size: 12px; color: #666; margin-top: 4px; }
   #result { text-align: center; margin-top: 30px; }
   #result a { display: inline-block; margin-top: 10px; padding: 12px 20px; background: #188038; color: #fff; border-radius: 6px; text-decoration: none; }
+
+  .progress-wrap { margin-top: 8px; }
+  .progress-bar { height: 8px; border-radius: 4px; background: #e0e0e0; overflow: hidden; }
+  .progress-bar-fill { height: 100%; width: 0%; background: #1a73e8; border-radius: 4px; transition: width 0.15s ease; }
+  .progress-bar-fill.indeterminate { width: 40% !important; animation: indeterminate 1.1s infinite ease-in-out; }
+  @keyframes indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(250%); }
+  }
+  .progress-label { font-size: 11px; color: #666; margin-top: 3px; }
+
+  #submitOverlay {
+    display: none;
+    position: fixed; inset: 0; background: rgba(255,255,255,0.92);
+    z-index: 50; align-items: center; justify-content: center;
+  }
+  #submitOverlay .box { width: 260px; text-align: center; }
+  #submitOverlay .progress-bar { height: 10px; }
+  #submitOverlay p { font-size: 13px; color: #333; margin-top: 12px; }
 </style>
 </head>
 <body>
@@ -41,6 +60,13 @@
 <footer>
   <button id="submitBtn">Submit &amp; Generate PDF</button>
 </footer>
+
+<div id="submitOverlay">
+  <div class="box">
+    <div class="progress-bar"><div class="progress-bar-fill indeterminate"></div></div>
+    <p>Generating PDF report&hellip; this can take a little while for lots of photos. Please don&apos;t close this tab.</p>
+  </div>
+</div>
 
 <script>
 const params = new URLSearchParams(window.location.search);
@@ -91,6 +117,10 @@ function render() {
         <label><input type="checkbox" data-q="${q.num}" data-action="skip" ${entry.skipped ? 'checked' : ''}/> N/A</label>
       </div>
       <div class="status">${entry.photos.length} photo(s)</div>
+      <div class="progress-wrap" style="display:none;">
+        <div class="progress-bar"><div class="progress-bar-fill"></div></div>
+        <div class="progress-label"></div>
+      </div>
       <div class="thumbs">${thumbsHtml}</div>
     `;
     container.appendChild(card);
@@ -113,18 +143,50 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-async function onUpload(e) {
+function onUpload(e) {
   const qnum = e.target.getAttribute('data-q');
   const files = e.target.files;
   if (!files || files.length === 0) return;
   const formData = new FormData();
   for (const f of files) formData.append('photos', f);
   e.target.disabled = true;
-  const resp = await fetch(`/api/session/${sessionId}/upload/${qnum}`, { method: 'POST', body: formData });
-  const data = await resp.json();
-  session.answers[qnum].photos = data.photos;
-  session.answers[qnum].skipped = false;
-  render();
+
+  const card = document.getElementById(`q-${qnum}`);
+  const wrap = card.querySelector('.progress-wrap');
+  const fill = card.querySelector('.progress-bar-fill');
+  const label = card.querySelector('.progress-label');
+  wrap.style.display = 'block';
+  fill.style.width = '0%';
+  label.textContent = `Uploading ${files.length} photo(s)… 0%`;
+
+  const xhr = new XMLHttpRequest();
+  xhr.upload.addEventListener('progress', (ev) => {
+    if (!ev.lengthComputable) return;
+    const pct = Math.round((ev.loaded / ev.total) * 100);
+    fill.style.width = `${pct}%`;
+    label.textContent = `Uploading ${files.length} photo(s)… ${pct}%`;
+  });
+
+  xhr.addEventListener('load', () => {
+    wrap.style.display = 'none';
+    if (xhr.status < 200 || xhr.status >= 300) {
+      alert('Upload failed: ' + xhr.responseText);
+      return;
+    }
+    const data = JSON.parse(xhr.responseText);
+    session.answers[qnum].photos = data.photos;
+    session.answers[qnum].skipped = false;
+    render();
+  });
+
+  xhr.addEventListener('error', () => {
+    wrap.style.display = 'none';
+    alert('Upload failed. Check your connection and try again.');
+    e.target.disabled = false;
+  });
+
+  xhr.open('POST', `/api/session/${sessionId}/upload/${qnum}`);
+  xhr.send(formData);
 }
 
 async function onSkip(e) {
@@ -149,8 +211,10 @@ async function onDelete(e) {
 
 document.getElementById('submitBtn').addEventListener('click', async () => {
   const btn = document.getElementById('submitBtn');
+  const overlay = document.getElementById('submitOverlay');
   btn.disabled = true;
   btn.textContent = 'Generating PDF...';
+  overlay.style.display = 'flex';
   try {
     const resp = await fetch(`/api/session/${sessionId}/submit`, { method: 'POST' });
     const data = await resp.json();
@@ -164,6 +228,8 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
     alert('Failed to generate PDF: ' + e.message);
     btn.disabled = false;
     btn.textContent = 'Submit & Generate PDF';
+  } finally {
+    overlay.style.display = 'none';
   }
 });
 

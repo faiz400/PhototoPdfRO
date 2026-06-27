@@ -19,10 +19,15 @@ for (const dir of [SESSIONS_DIR, UPLOADS_DIR, PDFS_DIR]) {
 }
 
 const QUESTIONS = JSON.parse(fs.readFileSync(QUESTIONS_PATH, 'utf-8'));
+const { version: APP_VERSION } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
 
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(ROOT, 'public')));
+
+app.get('/api/version', (req, res) => {
+  res.json({ version: APP_VERSION });
+});
 
 function sessionPath(id) {
   return path.join(SESSIONS_DIR, `${id}.json`);
@@ -214,19 +219,16 @@ function generatePdf(session, outputPath) {
       doc.text(`RO Code: ${session.roCode || '-'}`);
       doc.text(`Auditor: ${session.auditor || '-'}`);
       doc.text(`Audit Date: ${session.auditDate || '-'}`);
-      doc.text(`Generated: ${new Date().toLocaleString()}`);
 
       for (const q of QUESTIONS) {
         const entry = session.answers[q.num] || { skipped: false, photos: [] };
+        // Skip the section entirely when there's nothing to show -
+        // no page, no title, no "N/A" placeholder.
+        if (entry.skipped || entry.photos.length === 0) continue;
+
         doc.addPage();
         doc.fontSize(14).text(`${q.num}. ${q.title}`, { underline: true });
         doc.moveDown(0.5);
-
-        if (entry.skipped || entry.photos.length === 0) {
-          doc.fontSize(11).fillColor('#888').text('N/A - No photo provided', { italics: true });
-          doc.fillColor('#000');
-          continue;
-        }
 
         const qDir = path.join(UPLOADS_DIR, session.id, `q${q.num}`);
         let i = 0;
@@ -262,23 +264,31 @@ function generatePdf(session, outputPath) {
 
     const headerText = `RO Code: ${session.roCode || '-'}   |   RO Name: ${session.roName || '-'}   |   Audit Date: ${session.auditDate || '-'}`;
     const range = doc.bufferedPageRange();
+    // Writing this close to the page edges falls outside the body margins,
+    // which makes pdfkit think the content overflowed and silently insert
+    // an extra page. Zero the margins for the duration of this loop only.
+    const savedMargins = { ...doc.page.margins };
     for (let pageIdx = range.start; pageIdx < range.start + range.count; pageIdx++) {
       doc.switchToPage(pageIdx);
+      doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
       const pageNum = pageIdx - range.start + 1;
       const totalPages = range.count;
 
       doc.fontSize(7).fillColor('#888')
-        .text(headerText, doc.page.margins.left, 15, {
-          width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+        .text(headerText, savedMargins.left, 15, {
+          width: doc.page.width - savedMargins.left - savedMargins.right,
           align: 'center',
+          lineBreak: false,
         });
 
       doc.fontSize(7).fillColor('#888')
-        .text(`Page ${pageNum} of ${totalPages}`, doc.page.margins.left, doc.page.height - 20, {
-          width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+        .text(`Page ${pageNum} of ${totalPages}`, savedMargins.left, doc.page.height - 20, {
+          width: doc.page.width - savedMargins.left - savedMargins.right,
           align: 'center',
+          lineBreak: false,
         });
       doc.fillColor('#000');
+      doc.page.margins = savedMargins;
     }
 
       doc.end();
