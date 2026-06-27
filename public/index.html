@@ -12,6 +12,13 @@
   button { margin-top: 24px; width: 100%; padding: 12px; font-size: 16px; background: #1a73e8; color: white; border: none; border-radius: 6px; cursor: pointer; }
   button:disabled { background: #aaa; }
   .version { margin-top: 30px; text-align: center; font-size: 11px; color: #999; }
+
+  .queue-box { margin-top: 28px; padding: 12px 14px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fafafa; }
+  .queue-box h2 { font-size: 13px; margin: 0 0 8px; color: #444; }
+  .queue-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+  .queue-row .badge { font-weight: 600; color: #1a73e8; }
+  .queue-empty { font-size: 13px; color: #888; }
+  .queue-list { margin-top: 6px; border-top: 1px solid #eee; padding-top: 6px; }
 </style>
 </head>
 <body>
@@ -22,12 +29,52 @@
   <label>Auditor Name<input id="auditor" /></label>
   <label>Audit Date<input id="auditDate" type="date" /></label>
   <button id="startBtn">Start Audit</button>
+
+  <div class="queue-box">
+    <h2>Current Session Status</h2>
+    <div id="queueContent"><div class="queue-empty">Loading…</div></div>
+  </div>
+
   <div class="version" id="versionTag"></div>
 
 <script>
 fetch('/api/version').then((r) => r.json()).then((d) => {
   document.getElementById('versionTag').textContent = `v${d.version}`;
 }).catch(() => {});
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+async function refreshQueue() {
+  try {
+    const resp = await fetch('/api/queue');
+    const data = await resp.json();
+    const el = document.getElementById('queueContent');
+    if (!data.active && data.queue.length === 0) {
+      el.innerHTML = '<div class="queue-empty">No one is auditing right now &mdash; you can start immediately.</div>';
+      return;
+    }
+    let html = '';
+    if (data.active) {
+      html += `<div class="queue-row"><span>Active now:</span><span class="badge">${escapeHtml(data.active.roName) || 'RO'} (${escapeHtml(data.active.roCode) || '-'})</span></div>`;
+    } else {
+      html += '<div class="queue-empty">No one is currently active.</div>';
+    }
+    if (data.queue.length > 0) {
+      html += '<div class="queue-list">';
+      for (const q of data.queue) {
+        html += `<div class="queue-row"><span>#${q.position} waiting:</span><span>${escapeHtml(q.roName) || 'RO'} (${escapeHtml(q.roCode) || '-'})</span></div>`;
+      }
+      html += '</div>';
+    }
+    el.innerHTML = html;
+  } catch (e) { /* ignore, keep showing last known state */ }
+}
+refreshQueue();
+setInterval(refreshQueue, 4000);
 </script>
 
 <script>
@@ -46,7 +93,11 @@ document.getElementById('startBtn').addEventListener('click', async () => {
       body: JSON.stringify({ roName, roCode, auditor, auditDate }),
     });
     const data = await resp.json();
-    window.location.href = `/audit.html?session=${data.sessionId}`;
+    if (data.status === 'queued') {
+      window.location.href = `/waiting.html?session=${data.sessionId}`;
+    } else {
+      window.location.href = `/audit.html?session=${data.sessionId}`;
+    }
   } catch (e) {
     alert('Failed to start session: ' + e);
     btn.disabled = false;

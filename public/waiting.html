@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RO Audit - Waiting</title>
+<style>
+  body { font-family: system-ui, Arial, sans-serif; max-width: 480px; margin: 60px auto; padding: 0 16px; text-align: center; }
+  h1 { font-size: 18px; }
+  .position { font-size: 48px; font-weight: 700; color: #1a73e8; margin: 20px 0; }
+  .position span { font-size: 18px; color: #666; font-weight: 400; }
+  p { font-size: 13px; color: #666; }
+  .spinner { margin: 24px auto; width: 28px; height: 28px; border: 3px solid #ddd; border-top-color: #1a73e8; border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <h1>Only one audit session runs at a time</h1>
+  <p>Someone else is currently uploading photos. You'll be moved to the front automatically as your turn comes up &mdash; keep this tab open.</p>
+  <div class="spinner"></div>
+  <div class="position" id="positionBox">&hellip;</div>
+  <p id="statusMsg"></p>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const sessionId = params.get('session');
+if (!sessionId) {
+  document.body.innerHTML = '<p>Missing session. <a href="/">Go back</a> and start a new audit.</p>';
+  throw new Error('no session');
+}
+
+async function poll() {
+  try {
+    const resp = await fetch(`/api/session/${sessionId}/heartbeat`, { method: 'POST' });
+    const data = await resp.json();
+    if (data.status === 'active') {
+      window.location.href = `/audit.html?session=${sessionId}`;
+      return;
+    }
+    if (data.status === 'queued') {
+      document.getElementById('positionBox').innerHTML = `#${data.position} <span>in queue</span>`;
+      document.getElementById('statusMsg').textContent = '';
+    } else {
+      document.getElementById('positionBox').textContent = '?';
+      document.getElementById('statusMsg').textContent = 'Lost your place in the queue (timed out). Please start again.';
+      return;
+    }
+  } catch (e) {
+    document.getElementById('statusMsg').textContent = 'Connection issue, retrying…';
+  }
+  setTimeout(poll, 3000);
+}
+poll();
+</script>
+</body>
+</html>

@@ -80,6 +80,17 @@ let questions = [];
 let session = null;
 
 async function load() {
+  const turnResp = await fetch(`/api/session/${sessionId}/turn`);
+  const turn = await turnResp.json();
+  if (turn.status === 'queued') {
+    window.location.href = `/waiting.html?session=${sessionId}`;
+    return;
+  }
+  if (turn.status !== 'active') {
+    document.body.innerHTML = '<p>This session is no longer active (it may have timed out). <a href="/">Go back</a> and start a new audit.</p>';
+    return;
+  }
+
   const [qResp, sResp] = await Promise.all([
     fetch('/api/questions'),
     fetch(`/api/session/${sessionId}`),
@@ -91,6 +102,17 @@ async function load() {
   document.getElementById('roSub').textContent = `Auditor: ${session.auditor || '-'} | Date: ${session.auditDate || '-'}`;
 
   render();
+  startHeartbeat();
+}
+
+function startHeartbeat() {
+  setInterval(async () => {
+    try {
+      const resp = await fetch(`/api/session/${sessionId}/heartbeat`, { method: 'POST' });
+      const data = await resp.json();
+      if (data.status !== 'active') handleLostTurn();
+    } catch (e) { /* ignore transient network errors */ }
+  }, 30000);
 }
 
 function render() {
@@ -168,6 +190,10 @@ function onUpload(e) {
 
   xhr.addEventListener('load', () => {
     wrap.style.display = 'none';
+    if (xhr.status === 423) {
+      handleLostTurn();
+      return;
+    }
     if (xhr.status < 200 || xhr.status >= 300) {
       alert('Upload failed: ' + xhr.responseText);
       return;
@@ -188,14 +214,20 @@ function onUpload(e) {
   xhr.send(formData);
 }
 
+function handleLostTurn() {
+  alert('Your session timed out due to inactivity and was handed to the next person in queue. Please start a new audit.');
+  window.location.href = '/';
+}
+
 async function onSkip(e) {
   const qnum = e.target.getAttribute('data-q');
   const skipped = e.target.checked;
-  await fetch(`/api/session/${sessionId}/skip/${qnum}`, {
+  const resp = await fetch(`/api/session/${sessionId}/skip/${qnum}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ skipped }),
   });
+  if (resp.status === 423) return handleLostTurn();
   session.answers[qnum].skipped = skipped;
   render();
 }
@@ -203,7 +235,8 @@ async function onSkip(e) {
 async function onDelete(e) {
   const qnum = e.target.getAttribute('data-q');
   const file = e.target.getAttribute('data-file');
-  await fetch(`/api/session/${sessionId}/photo/${qnum}/${file}`, { method: 'DELETE' });
+  const resp = await fetch(`/api/session/${sessionId}/photo/${qnum}/${file}`, { method: 'DELETE' });
+  if (resp.status === 423) return handleLostTurn();
   session.answers[qnum].photos = session.answers[qnum].photos.filter((p) => p !== file);
   render();
 }
@@ -235,6 +268,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
 
   try {
     const resp = await fetch(`/api/session/${sessionId}/submit`, { method: 'POST' });
+    if (resp.status === 423) { handleLostTurn(); return; }
     const data = await resp.json();
     if (!data.ok) throw new Error(data.error || 'Unknown error');
     document.getElementById('questions').style.display = 'none';

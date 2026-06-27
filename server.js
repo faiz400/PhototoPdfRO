@@ -29,6 +29,82 @@ app.get('/api/version', (req, res) => {
   res.json({ version: APP_VERSION });
 });
 
+// --- Single-slot session queue ---
+// Photo uploads + sharp/HEIC decoding are memory-heavy. Running several
+// sessions at once on a small free-tier dyno risks an OOM restart, which
+// would wipe every in-progress session. So only one session may actively
+// upload/edit at a time; everyone else waits in a FIFO queue.
+const ACTIVE_TIMEOUT_MS = 2 * 60 * 1000; // no heartbeat for this long -> assume abandoned
+const QUEUE_TIMEOUT_MS = 2 * 60 * 1000;
+
+let active = null; // { id, roName, roCode, startedAt, lastHeartbeat }
+const queue = []; // [{ id, roName, roCode, queuedAt, lastHeartbeat }]
+
+function pruneAndPromote() {
+  const now = Date.now();
+  if (active && now - active.lastHeartbeat > ACTIVE_TIMEOUT_MS) {
+    active = null;
+  }
+  for (let i = queue.length - 1; i >= 0; i--) {
+    if (now - queue[i].lastHeartbeat > QUEUE_TIMEOUT_MS) queue.splice(i, 1);
+  }
+  if (!active && queue.length > 0) {
+    const next = queue.shift();
+    active = { ...next, startedAt: now, lastHeartbeat: now };
+  }
+}
+
+function releaseActive(id) {
+  if (active && active.id === id) {
+    active = null;
+    pruneAndPromote();
+  }
+}
+
+function turnStatus(id) {
+  pruneAndPromote();
+  if (active && active.id === id) return { status: 'active' };
+  const idx = queue.findIndex((q) => q.id === id);
+  if (idx >= 0) return { status: 'queued', position: idx + 1 };
+  return { status: 'unknown' };
+}
+
+function publicQueueState() {
+  pruneAndPromote();
+  return {
+    active: active ? { roName: active.roName, roCode: active.roCode, startedAt: active.startedAt } : null,
+    queue: queue.map((q, i) => ({ position: i + 1, roName: q.roName, roCode: q.roCode })),
+  };
+}
+
+app.get('/api/queue', (req, res) => {
+  res.json(publicQueueState());
+});
+
+app.get('/api/session/:id/turn', (req, res) => {
+  res.json(turnStatus(req.params.id));
+});
+
+app.post('/api/session/:id/heartbeat', (req, res) => {
+  pruneAndPromote();
+  const now = Date.now();
+  if (active && active.id === req.params.id) active.lastHeartbeat = now;
+  const entry = queue.find((q) => q.id === req.params.id);
+  if (entry) entry.lastHeartbeat = now;
+  res.json(turnStatus(req.params.id));
+});
+
+// Gate that only lets the currently-active session through to
+// state-mutating routes (upload/skip/delete/submit).
+function requireActiveTurn(req, res, next) {
+  pruneAndPromote();
+  if (active && active.id === req.params.id) {
+    active.lastHeartbeat = Date.now();
+    return next();
+  }
+  res.status(423).json(turnStatus(req.params.id));
+}
+
 function sessionPath(id) {
   return path.join(SESSIONS_DIR, `${id}.json`);
 }
@@ -72,7 +148,16 @@ app.post('/api/session', (req, res) => {
   };
   fs.mkdirSync(path.join(UPLOADS_DIR, id), { recursive: true });
   saveSession(session);
-  res.json({ sessionId: id });
+
+  pruneAndPromote();
+  const now = Date.now();
+  if (!active) {
+    active = { id, roName, roCode, startedAt: now, lastHeartbeat: now };
+    res.json({ sessionId: id, status: 'active' });
+  } else {
+    queue.push({ id, roName, roCode, queuedAt: now, lastHeartbeat: now });
+    res.json({ sessionId: id, status: 'queued', position: queue.length });
+  }
 });
 
 app.get('/api/session/:id', (req, res) => {
@@ -96,7 +181,7 @@ const upload = multer({
   limits: { fileSize: 25 * 1024 * 1024 },
 });
 
-app.post('/api/session/:id/upload/:qnum', upload.array('photos', 200), (req, res) => {
+app.post('/api/session/:id/upload/:qnum', requireActiveTurn, upload.array('photos', 200), (req, res) => {
   const session = loadSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   const qnum = req.params.qnum;
@@ -110,7 +195,7 @@ app.post('/api/session/:id/upload/:qnum', upload.array('photos', 200), (req, res
   res.json({ photos: session.answers[qnum].photos });
 });
 
-app.delete('/api/session/:id/photo/:qnum/:filename', (req, res) => {
+app.delete('/api/session/:id/photo/:qnum/:filename', requireActiveTurn, (req, res) => {
   const session = loadSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   const { qnum, filename } = req.params;
@@ -123,7 +208,7 @@ app.delete('/api/session/:id/photo/:qnum/:filename', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/session/:id/skip/:qnum', (req, res) => {
+app.post('/api/session/:id/skip/:qnum', requireActiveTurn, (req, res) => {
   const session = loadSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   const { qnum } = req.params;
@@ -150,7 +235,7 @@ app.get('/api/session/:id/pdf-progress', (req, res) => {
   res.json(progress);
 });
 
-app.post('/api/session/:id/submit', async (req, res) => {
+app.post('/api/session/:id/submit', requireActiveTurn, async (req, res) => {
   const session = loadSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
@@ -167,6 +252,7 @@ app.post('/api/session/:id/submit', async (req, res) => {
     res.status(500).json({ error: 'Failed to generate PDF', detail: String(err) });
   } finally {
     PDF_PROGRESS.delete(session.id);
+    releaseActive(session.id);
   }
 });
 
