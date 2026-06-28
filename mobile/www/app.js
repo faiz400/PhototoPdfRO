@@ -3,12 +3,26 @@
  * generation. Nothing is sent over the network. The only "sharing" happens
  * at the very end, when the user explicitly shares/saves the finished PDF.
  */
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 
-const { Filesystem, Directory, Encoding } = Capacitor.Plugins;
-const { Camera } = Capacitor.Plugins;
-const { Share } = Capacitor.Plugins;
+// Surface anything unexpected as a visible alert instead of a silent
+// freeze - there's no remote debugger available in the field.
+window.addEventListener('error', (e) => {
+  alert('Unexpected error: ' + (e.error && e.error.message ? e.error.message : e.message));
+});
+window.addEventListener('unhandledrejection', (e) => {
+  alert('Unexpected error: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+});
 
+const { Filesystem, Camera, Share } = Capacitor.Plugins;
+
+// Directory/Encoding/CameraResultType/CameraSource are TypeScript enums
+// exported by the @capacitor/* npm packages, not native plugins - they
+// don't exist on Capacitor.Plugins at runtime. Since this app has no
+// bundler step, hardcode their actual string values directly instead of
+// (incorrectly) destructuring them off Capacitor.Plugins.
+const Directory = { Documents: 'DOCUMENTS', Data: 'DATA', Cache: 'CACHE', External: 'EXTERNAL' };
+const Encoding = { UTF8: 'utf8' };
 const CameraResultType = { Uri: 'uri', Base64: 'base64', DataUrl: 'dataUrl' };
 const CameraSource = { Prompt: 'PROMPT', Camera: 'CAMERA', Photos: 'PHOTOS' };
 
@@ -125,20 +139,28 @@ async function init() {
 }
 
 document.getElementById('startBtn').addEventListener('click', async () => {
-  const roName = document.getElementById('roName').value.trim();
-  const roCode = document.getElementById('roCode').value.trim();
-  const auditor = document.getElementById('auditor').value.trim();
-  const auditDate = document.getElementById('auditDate').value;
+  const btn = document.getElementById('startBtn');
+  try {
+    btn.disabled = true;
+    const roName = document.getElementById('roName').value.trim();
+    const roCode = document.getElementById('roCode').value.trim();
+    const auditor = document.getElementById('auditor').value.trim();
+    const auditDate = document.getElementById('auditDate').value;
 
-  await clearSession();
-  session = {
-    roName, roCode, auditor, auditDate,
-    createdAt: new Date().toISOString(),
-    answers: newAnswers(),
-    submitted: false,
-  };
-  await writeSession();
-  enterAudit();
+    await clearSession();
+    session = {
+      roName, roCode, auditor, auditDate,
+      createdAt: new Date().toISOString(),
+      answers: newAnswers(),
+      submitted: false,
+    };
+    await writeSession();
+    await enterAudit();
+  } catch (e) {
+    alert('Could not start audit: ' + (e && e.message ? e.message : e));
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 async function enterAudit() {
