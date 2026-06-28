@@ -3,7 +3,7 @@
  * generation. Nothing is sent over the network. The only "sharing" happens
  * at the very end, when the user explicitly shares/saves the finished PDF.
  */
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 // Surface anything unexpected as a visible alert instead of a silent
 // freeze - there's no remote debugger available in the field.
@@ -103,19 +103,24 @@ function drawScaledJpeg(bitmap, maxDim, quality) {
   return new Promise((res) => canvas.toBlob(res, 'image/jpeg', quality));
 }
 
-// Decodes the source photo exactly once and derives both the
-// full-resolution (PDF-bound) and thumbnail (list-display-bound) JPEGs
-// from that single bitmap, instead of decoding the original twice.
+// Camera.getPhoto/pickImages already downscale + recompress natively
+// (Android Bitmap APIs, see the width/height/quality options passed in
+// onCapture) before handing the file to the webview. A modern phone photo
+// can be 12-108MP; without that, every capture meant decoding a huge
+// bitmap in the WebView's JS/canvas heap (slow, and canvases have size
+// limits some of those resolutions can actually exceed) just to immediately
+// throw most of it away. Since native already delivered an image capped at
+// MAX_PHOTO_DIM, the "full" output needs no further processing here - only
+// the thumbnail still needs a (now cheap, since the source is already
+// small) decode + downscale.
 async function processPhotoFromWebPath(webPath) {
   const resp = await fetch(webPath);
   const blob = await resp.blob();
+  const fullBase64 = await blobToBase64(blob);
   const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
   try {
-    const [fullBlob, thumbBlob] = await Promise.all([
-      drawScaledJpeg(bitmap, MAX_PHOTO_DIM, JPEG_QUALITY),
-      drawScaledJpeg(bitmap, THUMB_DIM, THUMB_QUALITY),
-    ]);
-    const [fullBase64, thumbBase64] = await Promise.all([blobToBase64(fullBlob), blobToBase64(thumbBlob)]);
+    const thumbBlob = await drawScaledJpeg(bitmap, THUMB_DIM, THUMB_QUALITY);
+    const thumbBase64 = await blobToBase64(thumbBlob);
     return { fullBase64, thumbBase64 };
   } finally {
     bitmap.close();
@@ -315,13 +320,29 @@ async function onCapture(btn, mode) {
   const fill = card.querySelector('.progress-bar-fill');
   const label = card.querySelector('.progress-label');
 
+  // width/height ask the native Android layer to downscale (and quality
+  // to recompress) before the image ever reaches the webview - much
+  // faster than decoding a full-resolution phone photo in a JS canvas,
+  // and the actual fix for "high resolution photos take forever."
+  const NATIVE_QUALITY = Math.round(JPEG_QUALITY * 100);
   let webPaths = [];
   try {
     if (mode === 'camera') {
-      const photo = await Camera.getPhoto({ resultType: CameraResultType.Uri, source: CameraSource.Camera, quality: 90 });
+      const photo = await Camera.getPhoto({
+        resultType: CameraResultType.Uri,
+        source: CameraSource.Camera,
+        quality: NATIVE_QUALITY,
+        width: MAX_PHOTO_DIM,
+        height: MAX_PHOTO_DIM,
+      });
       webPaths = [photo.webPath];
     } else {
-      const result = await Camera.pickImages({ quality: 90, limit: 0 });
+      const result = await Camera.pickImages({
+        quality: NATIVE_QUALITY,
+        limit: 0,
+        width: MAX_PHOTO_DIM,
+        height: MAX_PHOTO_DIM,
+      });
       webPaths = (result.photos || []).map((p) => p.webPath);
     }
   } catch (e) {
