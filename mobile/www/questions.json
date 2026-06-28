@@ -1,0 +1,172 @@
+[
+  {
+    "num": 1,
+    "title": "Density Kit Availability",
+    "guideline": "Check The Density Kit Availability"
+  },
+  {
+    "num": 2,
+    "title": "Density Test",
+    "guideline": "Perform Type A test"
+  },
+  {
+    "num": 3,
+    "title": "Filter Paper (MS)",
+    "guideline": "Check the requirement as per Standard"
+  },
+  {
+    "num": 4,
+    "title": "Tier Sampling System",
+    "guideline": "Check the requirement as per Standard"
+  },
+  {
+    "num": 5,
+    "title": "Nozzle Test - MS",
+    "guideline": "Check through Free flow of Nozzle"
+  },
+  {
+    "num": 6,
+    "title": "Nozzle Test - HSD",
+    "guideline": "Check through Free flow of Nozzle"
+  },
+  {
+    "num": 7,
+    "title": "Is gross stock variation within total permissible limit R ? (MS)",
+    "guideline": "Check as per prcedure and attached the backup records as pic"
+  },
+  {
+    "num": 8,
+    "title": "Is gross stock variation within total permissible limit R ? (HSD)",
+    "guideline": "Check as per prcedure and attached the backup records as pic"
+  },
+  {
+    "num": 9,
+    "title": "Totalizer / DU Verification",
+    "guideline": "Check as per requirement"
+  },
+  {
+    "num": 10,
+    "title": "Automation Status",
+    "guideline": "Check as per requirement. And attached the relevant pics of comparision with DSSR"
+  },
+  {
+    "num": 11,
+    "title": "DSSR",
+    "guideline": "Check the DSSR report."
+  },
+  {
+    "num": 12,
+    "title": "CRA Reviews",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 13,
+    "title": "Explosive License",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 14,
+    "title": "CCOE Drawings Review",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 15,
+    "title": "W&M license",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 16,
+    "title": "Fire Extinguishers & Sand Tubs",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 17,
+    "title": "First Aid Box",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 18,
+    "title": "Weekly safety Audit Checklist Maintained ( As per PNGRB)",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 19,
+    "title": "Mock Drill (In last three months)",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 20,
+    "title": "Work permit is being followed",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 21,
+    "title": "MS & HSD area is classified with proper color code",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 22,
+    "title": "Reference density & Stock at the RO are displayed on Stock Board",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 23,
+    "title": "Provision of Min. 2 pts of ESD",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 24,
+    "title": "Decantation Checklist are maintained  at RO.( Last 2 TTs)",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 25,
+    "title": "Fleet & Loyality Programme",
+    "guideline": "Attached relevant pic against each point"
+  },
+  {
+    "num": 26,
+    "title": "Lubricant Details",
+    "guideline": "Check display with Invoice."
+  },
+  {
+    "num": 27,
+    "title": "Correct price Showing at totem. Also no sticker of  lubricants on totem. Confirm.",
+    "guideline": null
+  },
+  {
+    "num": 28,
+    "title": "Shop Establishment Certificate (For City Outlet ROs) Displayed",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 29,
+    "title": "Abstract of Petroleum Rules, 2002 Displayed!",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 30,
+    "title": "Electrical Earthing Certificate Displayed!",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 31,
+    "title": "Is the Canopy Pillar Signage there and in a good condition. ( Good condition means not broken/ faded/ peeled off)",
+    "guideline": null
+  },
+  {
+    "num": 32,
+    "title": "Is the Daily Updated Maintenance roster for the current day displayed behind the door?",
+    "guideline": null
+  },
+  {
+    "num": 33,
+    "title": "Has the Valid Framed Water Certificate been displayed or hung at the Water Facility?",
+    "guideline": null
+  },
+  {
+    "num": 34,
+    "title": "Electrical Hazards – Overhead HT Line / Transformer / DP Structure",
+    "guideline": "Check as per requirement mention"
+  }
+]

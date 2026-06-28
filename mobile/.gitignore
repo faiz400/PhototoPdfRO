@@ -1,0 +1,11 @@
+node_modules/
+toolchain/
+dist/*.apk
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/captor-cordova-android-plugins/build/
+android/capacitor-cordova-android-plugins/build/
+*.log
+build_log*.txt

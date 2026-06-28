@@ -1,0 +1,19 @@
+{
+  "name": "ro-audit-photo-offline",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone offline Android app for RO audit photo collection",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/camera": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/filesystem": "^6.0.2",
+    "@capacitor/share": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

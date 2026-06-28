@@ -1,0 +1,8 @@
+{
+  "appId": "com.nayaraea.roaudit",
+  "appName": "RO Audit Photo",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}
