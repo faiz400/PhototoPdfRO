@@ -3,7 +3,7 @@
  * generation. Nothing is sent over the network. The only "sharing" happens
  * at the very end, when the user explicitly shares/saves the finished PDF.
  */
-const APP_VERSION = '1.0.2';
+const APP_VERSION = '1.1.0';
 
 // Surface anything unexpected as a visible alert instead of a silent
 // freeze - there's no remote debugger available in the field.
@@ -30,9 +30,21 @@ const SESSION_DIR = 'audit_session';
 const SESSION_FILE = `${SESSION_DIR}/session.json`;
 const MAX_PHOTO_DIM = 1600; // px, longest side - mirrors the server's downsampling logic
 const JPEG_QUALITY = 0.82;
+const THUMB_DIM = 220; // px - just for the on-screen list, not the PDF
+const THUMB_QUALITY = 0.6;
 
 let questions = [];
 let session = null;
+
+// In-memory cache of thumbnail data URLs, keyed by "qnum/filename". With
+// up to 150 photos in a session, re-reading + re-decoding every photo's
+// FULL-resolution file from disk on every single tap (add/skip/delete) -
+// which is what a naive full re-render does - is the actual source of
+// slowness and memory pressure here, not the photo count itself. Thumbnails
+// are tiny (a few KB) and safe to keep around for the whole session; full
+// originals are only ever touched one at a time, during capture and
+// during PDF generation.
+const thumbCache = new Map();
 
 document.getElementById('versionTag').textContent = `Offline build v${APP_VERSION}`;
 
@@ -80,29 +92,57 @@ function blobToBase64(blob) {
   });
 }
 
-async function webPathToCompressedJpegBase64(webPath) {
-  const resp = await fetch(webPath);
-  const blob = await resp.blob();
-  const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
-  const scale = Math.min(1, MAX_PHOTO_DIM / Math.max(bitmap.width, bitmap.height));
+function drawScaledJpeg(bitmap, maxDim, quality) {
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
   const h = Math.max(1, Math.round(bitmap.height * scale));
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
-  const outBlob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', JPEG_QUALITY));
-  return blobToBase64(outBlob);
+  return new Promise((res) => canvas.toBlob(res, 'image/jpeg', quality));
 }
 
-async function savePhotoFile(qnum, base64Data) {
+// Decodes the source photo exactly once and derives both the
+// full-resolution (PDF-bound) and thumbnail (list-display-bound) JPEGs
+// from that single bitmap, instead of decoding the original twice.
+async function processPhotoFromWebPath(webPath) {
+  const resp = await fetch(webPath);
+  const blob = await resp.blob();
+  const bitmap = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  try {
+    const [fullBlob, thumbBlob] = await Promise.all([
+      drawScaledJpeg(bitmap, MAX_PHOTO_DIM, JPEG_QUALITY),
+      drawScaledJpeg(bitmap, THUMB_DIM, THUMB_QUALITY),
+    ]);
+    const [fullBase64, thumbBase64] = await Promise.all([blobToBase64(fullBlob), blobToBase64(thumbBlob)]);
+    return { fullBase64, thumbBase64 };
+  } finally {
+    bitmap.close();
+  }
+}
+
+function thumbFilename(filename) {
+  return `thumb_${filename}`;
+}
+
+async function savePhotoFile(qnum, fullBase64, thumbBase64) {
   const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
-  await Filesystem.writeFile({
-    path: `${SESSION_DIR}/q${qnum}/${filename}`,
-    directory: Directory.Data,
-    data: base64Data,
-    recursive: true,
-  });
+  await Promise.all([
+    Filesystem.writeFile({
+      path: `${SESSION_DIR}/q${qnum}/${filename}`,
+      directory: Directory.Data,
+      data: fullBase64,
+      recursive: true,
+    }),
+    Filesystem.writeFile({
+      path: `${SESSION_DIR}/q${qnum}/${thumbFilename(filename)}`,
+      directory: Directory.Data,
+      data: thumbBase64,
+      recursive: true,
+    }),
+  ]);
+  thumbCache.set(`${qnum}/${filename}`, `data:image/jpeg;base64,${thumbBase64}`);
   return filename;
 }
 
@@ -111,9 +151,23 @@ async function readPhotoAsDataUrl(qnum, filename) {
   return `data:image/jpeg;base64,${res.data}`;
 }
 
+// Thumbnails are cached for the lifetime of the session - only ever hits
+// disk once per photo (e.g. on resuming an in-progress audit).
+async function readThumbDataUrl(qnum, filename) {
+  const key = `${qnum}/${filename}`;
+  if (thumbCache.has(key)) return thumbCache.get(key);
+  const dataUrl = await readPhotoAsDataUrl(qnum, thumbFilename(filename));
+  thumbCache.set(key, dataUrl);
+  return dataUrl;
+}
+
 async function deletePhotoFile(qnum, filename) {
+  thumbCache.delete(`${qnum}/${filename}`);
   try {
     await Filesystem.deleteFile({ path: `${SESSION_DIR}/q${qnum}/${filename}`, directory: Directory.Data });
+  } catch (e) { /* already gone */ }
+  try {
+    await Filesystem.deleteFile({ path: `${SESSION_DIR}/q${qnum}/${thumbFilename(filename)}`, directory: Directory.Data });
   } catch (e) { /* already gone */ }
 }
 
@@ -170,47 +224,82 @@ async function enterAudit() {
   await render();
 }
 
+function buildCardShell(q, entry) {
+  const card = document.createElement('div');
+  card.className = 'question' + (entry.skipped ? ' skip-card' : '');
+  card.id = `q-${q.num}`;
+  card.innerHTML = `
+    <h2>${q.num}. ${escapeHtml(q.title)}</h2>
+    <div class="row">
+      <button data-action="camera" data-q="${q.num}" style="width:auto;flex:1;margin:0;" ${entry.skipped ? 'disabled' : ''}>Take Photo</button>
+      <button data-action="gallery" data-q="${q.num}" class="secondary" style="width:auto;flex:1;margin:0;" ${entry.skipped ? 'disabled' : ''}>Choose from Gallery</button>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" data-q="${q.num}" data-action="skip" ${entry.skipped ? 'checked' : ''}/> N/A</label>
+    </div>
+    <div class="status">${entry.photos.length} photo(s)</div>
+    <div class="progress-wrap" style="display:none;">
+      <div class="progress-bar"><div class="progress-bar-fill"></div></div>
+      <div class="progress-label"></div>
+    </div>
+    <div class="thumbs"></div>
+  `;
+  bindCardActions(card);
+  return card;
+}
+
+function bindCardActions(card) {
+  card.querySelectorAll('[data-action="camera"]').forEach((el) => el.addEventListener('click', () => onCapture(el, 'camera')));
+  card.querySelectorAll('[data-action="gallery"]').forEach((el) => el.addEventListener('click', () => onCapture(el, 'gallery')));
+  card.querySelectorAll('[data-action="skip"]').forEach((el) => el.addEventListener('change', onSkip));
+  card.querySelectorAll('[data-action="delete"]').forEach((el) => el.addEventListener('click', onDelete));
+}
+
+// Fills in (or refreshes) just the thumbnail strip for one card, using the
+// cache wherever possible. This is the only place that touches disk for
+// display purposes, and only for photos not already cached.
+async function fillThumbnails(qnum) {
+  const card = document.getElementById(`q-${qnum}`);
+  if (!card) return;
+  const entry = session.answers[qnum] || { skipped: false, photos: [] };
+  const thumbsEl = card.querySelector('.thumbs');
+  thumbsEl.innerHTML = '';
+  for (const filename of entry.photos) {
+    const dataUrl = await readThumbDataUrl(qnum, filename);
+    const div = document.createElement('div');
+    div.className = 'thumb';
+    div.innerHTML = `<img src="${dataUrl}" /><button data-action="delete" data-q="${qnum}" data-file="${filename}">x</button>`;
+    thumbsEl.appendChild(div);
+  }
+  thumbsEl.querySelectorAll('[data-action="delete"]').forEach((el) => el.addEventListener('click', onDelete));
+}
+
+// Rebuilds just one question's card (used after upload/skip/delete) -
+// cheap regardless of session size since it never touches other questions.
+async function renderQuestionCard(qnum) {
+  const q = questions.find((qq) => String(qq.num) === String(qnum));
+  if (!q) return;
+  const entry = session.answers[qnum] || { skipped: false, photos: [] };
+  const oldCard = document.getElementById(`q-${qnum}`);
+  const newCard = buildCardShell(q, entry);
+  oldCard.replaceWith(newCard);
+  await fillThumbnails(qnum);
+}
+
+// Full rebuild - only needed once, when entering or resuming an audit.
 async function render() {
   const container = document.getElementById('questions');
   container.innerHTML = '';
   for (const q of questions) {
     const entry = session.answers[q.num] || { skipped: false, photos: [] };
-    const card = document.createElement('div');
-    card.className = 'question' + (entry.skipped ? ' skip-card' : '');
-    card.id = `q-${q.num}`;
-
-    card.innerHTML = `
-      <h2>${q.num}. ${escapeHtml(q.title)}</h2>
-      <div class="row">
-        <button data-action="camera" data-q="${q.num}" style="width:auto;flex:1;margin:0;" ${entry.skipped ? 'disabled' : ''}>Take Photo</button>
-        <button data-action="gallery" data-q="${q.num}" class="secondary" style="width:auto;flex:1;margin:0;" ${entry.skipped ? 'disabled' : ''}>Choose from Gallery</button>
-      </div>
-      <div class="row">
-        <label><input type="checkbox" data-q="${q.num}" data-action="skip" ${entry.skipped ? 'checked' : ''}/> N/A</label>
-      </div>
-      <div class="status">${entry.photos.length} photo(s)</div>
-      <div class="progress-wrap" style="display:none;">
-        <div class="progress-bar"><div class="progress-bar-fill"></div></div>
-        <div class="progress-label"></div>
-      </div>
-      <div class="thumbs"></div>
-    `;
-    container.appendChild(card);
-
-    const thumbsEl = card.querySelector('.thumbs');
-    for (const filename of entry.photos) {
-      const dataUrl = await readPhotoAsDataUrl(q.num, filename);
-      const div = document.createElement('div');
-      div.className = 'thumb';
-      div.innerHTML = `<img src="${dataUrl}" /><button data-action="delete" data-q="${q.num}" data-file="${filename}">x</button>`;
-      thumbsEl.appendChild(div);
-    }
+    container.appendChild(buildCardShell(q, entry));
   }
-
-  container.querySelectorAll('[data-action="camera"]').forEach((el) => el.addEventListener('click', () => onCapture(el, 'camera')));
-  container.querySelectorAll('[data-action="gallery"]').forEach((el) => el.addEventListener('click', () => onCapture(el, 'gallery')));
-  container.querySelectorAll('[data-action="skip"]').forEach((el) => el.addEventListener('change', onSkip));
-  container.querySelectorAll('[data-action="delete"]').forEach((el) => el.addEventListener('click', onDelete));
+  // Thumbnails load in the background per-card so the list appears
+  // instantly even with many photos already on disk (e.g. resuming).
+  for (const q of questions) {
+    const entry = session.answers[q.num] || { skipped: false, photos: [] };
+    if (entry.photos.length > 0) fillThumbnails(q.num);
+  }
 }
 
 function escapeHtml(str) {
@@ -246,24 +335,27 @@ async function onCapture(btn, mode) {
     fill.style.width = `${pct}%`;
     label.textContent = `Processing photo ${i + 1} of ${webPaths.length}…`;
     try {
-      const base64 = await webPathToCompressedJpegBase64(webPaths[i]);
-      const filename = await savePhotoFile(qnum, base64);
+      const { fullBase64, thumbBase64 } = await processPhotoFromWebPath(webPaths[i]);
+      const filename = await savePhotoFile(qnum, fullBase64, thumbBase64);
       session.answers[qnum].photos.push(filename);
       session.answers[qnum].skipped = false;
     } catch (e) {
       alert('Could not process one of the photos: ' + e.message);
     }
+    // yield every photo so the progress bar actually repaints and the
+    // webview doesn't appear to hang during a big batch (up to ~150)
+    await new Promise((r) => setTimeout(r, 0));
   }
   fill.style.width = '100%';
   await writeSession();
-  await render();
+  await renderQuestionCard(qnum);
 }
 
 async function onSkip(e) {
   const qnum = e.target.getAttribute('data-q');
   session.answers[qnum].skipped = e.target.checked;
   await writeSession();
-  await render();
+  await renderQuestionCard(qnum);
 }
 
 async function onDelete(e) {
@@ -272,7 +364,7 @@ async function onDelete(e) {
   await deletePhotoFile(qnum, filename);
   session.answers[qnum].photos = session.answers[qnum].photos.filter((f) => f !== filename);
   await writeSession();
-  await render();
+  await renderQuestionCard(qnum);
 }
 
 // --- PDF generation (on-device, via pdf-lib) ---
