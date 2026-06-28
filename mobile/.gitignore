@@ -1,6 +1,5 @@
 node_modules/
 toolchain/
-dist/*.apk
 android/local.properties
 android/.gradle/
 android/build/
