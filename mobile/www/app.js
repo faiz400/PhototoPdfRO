@@ -3,7 +3,7 @@
  * generation. Nothing is sent over the network. The only "sharing" happens
  * at the very end, when the user explicitly shares/saves the finished PDF.
  */
-const APP_VERSION = '1.0.1';
+const APP_VERSION = '1.0.2';
 
 // Surface anything unexpected as a visible alert instead of a silent
 // freeze - there's no remote debugger available in the field.
@@ -281,6 +281,19 @@ function sanitizeForFilename(s) {
   return String(s || '-').trim().replace(/[\\/:*?"<>|]+/g, '-');
 }
 
+// String.fromCharCode(...bytes) blows the call stack for anything past
+// ~60-100k bytes since spread passes every byte as its own function
+// argument - a multi-photo PDF is comfortably bigger than that. Convert
+// in fixed-size chunks instead.
+function uint8ArrayToBase64(bytes) {
+  const CHUNK_SIZE = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK_SIZE));
+  }
+  return btoa(binary);
+}
+
 async function generatePdfBytes(onProgress) {
   const { PDFDocument, StandardFonts, rgb } = PDFLib;
   const doc = await PDFDocument.create();
@@ -372,7 +385,7 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
       label.textContent = `Processing photo ${processed} of ${total}… ${pct}%`;
     });
 
-    const base64Pdf = btoa(String.fromCharCode(...new Uint8Array(pdfBytes)));
+    const base64Pdf = uint8ArrayToBase64(pdfBytes);
     const filename = `AuditPhotos-${sanitizeForFilename(session.roName)}-${sanitizeForFilename(session.auditDate)}.pdf`;
     const writeResult = await Filesystem.writeFile({
       path: filename,
