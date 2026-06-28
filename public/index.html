@@ -19,11 +19,23 @@
   .queue-row .badge { font-weight: 600; color: #1a73e8; }
   .queue-empty { font-size: 13px; color: #888; }
   .queue-list { margin-top: 6px; border-top: 1px solid #eee; padding-top: 6px; }
+
+  .offline-notice { margin-top: 16px; padding: 12px 14px; border: 1px solid #fdd; border-radius: 8px; background: #fff8f5; font-size: 13px; color: #663; }
+  .offline-notice strong { color: #b25; }
+  .offline-notice a { color: #1a73e8; font-weight: 600; text-decoration: none; }
+  .offline-notice a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
   <h1>Start RO Audit Photo Session</h1>
   <p>Fill in audit details, then proceed to upload photos against each checklist item.</p>
+
+  <div class="offline-notice">
+    <strong>Network issues at the site?</strong> This web app needs a working connection.
+    If the internet is unreliable, use the
+    <a href="https://github.com/faiz400/PhototoPdfRO/raw/main/mobile/dist/RO-Audit-Photo-App.apk">Android app</a>
+    instead &mdash; it works fully offline, no connection needed during the audit.
+  </div>
   <label>Retail Outlet Name<input id="roName" /></label>
   <label>RO Code<input id="roCode" /></label>
   <label>Auditor Name<input id="auditor" /></label>
