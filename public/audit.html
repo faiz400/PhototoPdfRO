@@ -241,6 +241,10 @@ async function onDelete(e) {
   render();
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 document.getElementById('submitBtn').addEventListener('click', async () => {
   const btn = document.getElementById('submitBtn');
   const overlay = document.getElementById('submitOverlay');
@@ -253,8 +257,21 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
   label.textContent = 'Generating PDF report… please don\'t close this tab.';
   overlay.style.display = 'flex';
 
-  const pollInterval = setInterval(async () => {
-    try {
+  try {
+    // The POST only kicks off generation server-side and returns right
+    // away - actual completion is detected by polling pdf-progress below.
+    // Generating a PDF with many photos can take a while, and earlier this
+    // was a single long-lived request, which Render's front-end proxy
+    // would silently kill once it ran ~100s without sending any response
+    // bytes - showing up here as a generic "Failed to fetch". Polling
+    // with short-lived requests avoids that entirely.
+    const resp = await fetch(`/api/session/${sessionId}/submit`, { method: 'POST' });
+    if (resp.status === 423) { handleLostTurn(); return; }
+    const data = await resp.json();
+    if (!data.ok) throw new Error(data.error || 'Unknown error');
+
+    let result;
+    while (true) {
       const presp = await fetch(`/api/session/${sessionId}/pdf-progress`);
       const p = await presp.json();
       if (p.total > 0) {
@@ -263,25 +280,24 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
         fill.style.width = `${pct}%`;
         label.textContent = `Processing photo ${p.processed} of ${p.total}… ${pct}%`;
       }
-    } catch (e) { /* ignore poll errors, keep showing indeterminate state */ }
-  }, 400);
+      if (p.done) {
+        result = p;
+        break;
+      }
+      await sleep(800);
+    }
+    if (result.error) throw new Error(result.error);
 
-  try {
-    const resp = await fetch(`/api/session/${sessionId}/submit`, { method: 'POST' });
-    if (resp.status === 423) { handleLostTurn(); return; }
-    const data = await resp.json();
-    if (!data.ok) throw new Error(data.error || 'Unknown error');
     document.getElementById('questions').style.display = 'none';
-    const result = document.getElementById('result');
-    result.style.display = 'block';
-    result.innerHTML = `<p>Audit photo report generated.</p><a href="${data.pdfUrl}" target="_blank">Download PDF</a>`;
+    const resultEl = document.getElementById('result');
+    resultEl.style.display = 'block';
+    resultEl.innerHTML = `<p>Audit photo report generated.</p><a href="${result.pdfUrl}" target="_blank">Download PDF</a>`;
     document.querySelector('footer').style.display = 'none';
   } catch (e) {
     alert('Failed to generate PDF: ' + e.message);
     btn.disabled = false;
     btn.textContent = 'Submit & Generate PDF';
   } finally {
-    clearInterval(pollInterval);
     overlay.style.display = 'none';
   }
 });

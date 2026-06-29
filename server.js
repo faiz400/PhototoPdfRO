@@ -226,34 +226,49 @@ function downloadFilename(session) {
   return `AuditPhotos-${safe(session.roName)}-${safe(session.auditDate)}.pdf`;
 }
 
-// Tracks in-progress PDF generation so the client can poll for a percentage.
+// Tracks in-progress PDF generation so the client can poll for a percentage,
+// and - more importantly - so the actual generation work happens outside
+// the lifetime of any single HTTP request. Render sits behind Cloudflare,
+// which drops a connection that's gone ~100s without any response bytes;
+// a submit with more than a handful of photos can easily take longer than
+// that, and the old code held the request open the entire time, so the
+// client just saw a generic "Failed to fetch" once the proxy gave up.
 const PDF_PROGRESS = new Map();
+
+function setPdfProgress(sessionId, patch) {
+  const current = PDF_PROGRESS.get(sessionId) || { processed: 0, total: 0, done: false, error: null, pdfUrl: null };
+  PDF_PROGRESS.set(sessionId, { ...current, ...patch });
+}
 
 app.get('/api/session/:id/pdf-progress', (req, res) => {
   const progress = PDF_PROGRESS.get(req.params.id);
-  if (!progress) return res.json({ processed: 0, total: 0 });
+  if (!progress) return res.json({ processed: 0, total: 0, done: false });
   res.json(progress);
 });
 
-app.post('/api/session/:id/submit', requireActiveTurn, async (req, res) => {
+app.post('/api/session/:id/submit', requireActiveTurn, (req, res) => {
   const session = loadSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
-  try {
-    const pdfFilename = `${session.id}.pdf`;
-    const pdfPath = path.join(PDFS_DIR, pdfFilename);
-    await generatePdf(session, pdfPath);
-    session.submitted = true;
-    session.pdfFilename = pdfFilename;
-    saveSession(session);
-    res.json({ ok: true, pdfUrl: `/api/session/${session.id}/download` });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to generate PDF', detail: String(err) });
-  } finally {
-    PDF_PROGRESS.delete(session.id);
-    releaseActive(session.id);
-  }
+  setPdfProgress(session.id, { processed: 0, total: 0, done: false, error: null, pdfUrl: null });
+  res.json({ ok: true, started: true });
+
+  (async () => {
+    try {
+      const pdfFilename = `${session.id}.pdf`;
+      const pdfPath = path.join(PDFS_DIR, pdfFilename);
+      await generatePdf(session, pdfPath);
+      session.submitted = true;
+      session.pdfFilename = pdfFilename;
+      saveSession(session);
+      setPdfProgress(session.id, { done: true, pdfUrl: `/api/session/${session.id}/download` });
+    } catch (err) {
+      console.error(err);
+      setPdfProgress(session.id, { done: true, error: String(err) });
+    } finally {
+      releaseActive(session.id);
+    }
+  })();
 });
 
 app.get('/api/session/:id/download', (req, res) => {
@@ -322,7 +337,7 @@ function generatePdf(session, outputPath) {
         return sum + (entry && !entry.skipped ? entry.photos.length : 0);
       }, 0);
       let processed = 0;
-      PDF_PROGRESS.set(session.id, { processed, total });
+      setPdfProgress(session.id, { processed, total });
 
       for (const q of QUESTIONS) {
         const entry = session.answers[q.num] || { skipped: false, photos: [] };
@@ -365,7 +380,7 @@ function generatePdf(session, outputPath) {
           doc.fillColor('#000');
 
           processed += 1;
-          PDF_PROGRESS.set(session.id, { processed, total });
+          setPdfProgress(session.id, { processed, total });
         }
       }
 
