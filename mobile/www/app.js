@@ -3,7 +3,7 @@
  * generation. Nothing is sent over the network. The only "sharing" happens
  * at the very end, when the user explicitly shares/saves the finished PDF.
  */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 // Surface anything unexpected as a visible alert instead of a silent
 // freeze - there's no remote debugger available in the field.
@@ -500,9 +500,18 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
 
     const base64Pdf = uint8ArrayToBase64(pdfBytes);
     const filename = `AuditPhotos-${sanitizeForFilename(session.roName)}-${sanitizeForFilename(session.auditDate)}.pdf`;
+    // Directory.Documents maps to Android's legacy public external storage
+    // (Environment.getExternalStoragePublicDirectory), which scoped storage
+    // blocks on Android 10+ without permissions this app never requests -
+    // writing there throws FILE_NOTCREATED. Directory.Data (the app's own
+    // sandboxed storage, already used for session photos above) is always
+    // writable with no permissions; the Share button below is the actual
+    // way this PDF leaves the app, via Android's share sheet (save to
+    // Downloads, send via WhatsApp, etc.) which handles the OS storage
+    // permissions on our behalf.
     const writeResult = await Filesystem.writeFile({
       path: filename,
-      directory: Directory.Documents,
+      directory: Directory.Data,
       data: base64Pdf,
       recursive: true,
     });
@@ -516,8 +525,9 @@ document.getElementById('submitBtn').addEventListener('click', async () => {
     const result = document.getElementById('result');
     result.style.display = 'block';
     result.innerHTML = `
-      <p>Audit photo report generated and saved to your device's Documents folder as:</p>
+      <p>Audit photo report generated:</p>
       <p><strong>${escapeHtml(filename)}</strong></p>
+      <p>Tap below to save it to Downloads, send it via WhatsApp/email, etc.</p>
       <button id="shareBtn">Share / Send PDF</button>
       <br/>
       <button id="newAuditBtn" class="secondary">Start a New Audit</button>
