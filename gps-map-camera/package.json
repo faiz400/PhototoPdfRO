@@ -1,0 +1,20 @@
+{
+  "name": "gps-map-camera",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Standalone Android camera app that stamps photos with timestamp, geolocation, address, and a small map - similar to GPS Map Camera",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/camera": "^6.1.2",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/filesystem": "^6.0.2",
+    "@capacitor/geolocation": "^6.0.1",
+    "@capacitor/share": "^6.0.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}

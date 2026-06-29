@@ -1,0 +1,8 @@
+{
+  "appId": "com.nayaraea.gpsmapcamera",
+  "appName": "GPS Map Camera",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

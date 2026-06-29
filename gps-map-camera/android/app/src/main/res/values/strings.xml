@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GPS Map Camera</string>
+    <string name="title_activity_main">GPS Map Camera</string>
+    <string name="package_name">com.nayaraea.gpsmapcamera</string>
+    <string name="custom_url_scheme">com.nayaraea.gpsmapcamera</string>
+</resources>
