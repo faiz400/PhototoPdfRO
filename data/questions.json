@@ -126,46 +126,51 @@
   },
   {
     "num": 26,
+    "title": "Bill Payment - mPOS machine",
+    "guideline": "Check as per requirement mention"
+  },
+  {
+    "num": 27,
     "title": "Lubricant Details",
     "guideline": "Check display with Invoice."
   },
   {
-    "num": 27,
+    "num": 28,
     "title": "Correct price Showing at totem. Also no sticker of  lubricants on totem. Confirm.",
-    "guideline": null
+    "guideline": ""
   },
   {
-    "num": 28,
+    "num": 29,
     "title": "Shop Establishment Certificate (For City Outlet ROs) Displayed",
     "guideline": "Check as per requirement mention"
   },
   {
-    "num": 29,
+    "num": 30,
     "title": "Abstract of Petroleum Rules, 2002 Displayed!",
     "guideline": "Check as per requirement mention"
   },
   {
-    "num": 30,
+    "num": 31,
     "title": "Electrical Earthing Certificate Displayed!",
     "guideline": "Check as per requirement mention"
   },
   {
-    "num": 31,
-    "title": "Is the Canopy Pillar Signage there and in a good condition. ( Good condition means not broken/ faded/ peeled off)",
-    "guideline": null
-  },
-  {
     "num": 32,
-    "title": "Is the Daily Updated Maintenance roster for the current day displayed behind the door?",
-    "guideline": null
+    "title": "Is the Canopy Pillar Signage there and in a good condition. ( Good condition means not broken/ faded/ peeled off)",
+    "guideline": ""
   },
   {
     "num": 33,
-    "title": "Has the Valid Framed Water Certificate been displayed or hung at the Water Facility?",
-    "guideline": null
+    "title": "Is the Daily Updated Maintenance roster for the current day displayed behind the door?",
+    "guideline": ""
   },
   {
     "num": 34,
+    "title": "Has the Valid Framed Water Certificate been displayed or hung at the Water Facility?",
+    "guideline": ""
+  },
+  {
+    "num": 35,
     "title": "Electrical Hazards – Overhead HT Line / Transformer / DP Structure",
     "guideline": "Check as per requirement mention"
   }
